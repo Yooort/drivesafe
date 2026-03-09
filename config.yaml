@@ -1,19 +1,18 @@
 # DriveSafe Configuration
 
 camera:
-  source: 0
-  use_gstreamer: false
+  source: "videoplayback.mp4"
   width: 1280               # force 1280x720 capture 
   height: 720
   framerate: 30
 
 model:
-  weights: "best.engine"  # TensorRT FP16 engine – 10-20x faster than CPU
+  weights: "best.pt"  # PyTorch model for CPU inference
   confidence: 0.6
   iou: 0.7
   imgsz: 640
-  device: "0"              # Jetson Orin GPU
-  half: False              # TRT engine already compiled as FP16; leave false
+  device: "cpu"              # CPU device for inference
+  half: False              # No half precision on CPU
 
 distance:
   focal_length: 610.0       # camera focal length in pixels (calibrate per CALIBRATION.md)

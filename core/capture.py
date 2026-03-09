@@ -23,7 +23,13 @@ def open_camera(cfg: dict) -> cv2.VideoCapture:
     h      = cam.get("height",    720)
     fps    = cam.get("framerate", 30)
 
-    cap = cv2.VideoCapture(source, cv2.CAP_V4L2)
+    # Use different capture method for files vs cameras
+    if isinstance(source, str) and (source.endswith(('.mp4', '.avi', '.mov', '.mkv', '.wmv', '.flv', '.webm')) or source.startswith('http')):
+        # Video file or URL
+        cap = cv2.VideoCapture(source)
+    else:
+        # Camera device
+        cap = cv2.VideoCapture(source, cv2.CAP_V4L2)
 
     if not cap.isOpened():
         print(f"[ERROR] Cannot open camera (source={source})")

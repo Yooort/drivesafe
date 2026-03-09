@@ -38,6 +38,14 @@ class AlertManager:
         "crosswalk": 7.0,
     }
 
+    # Voice rates for different urgency levels (words per minute)
+    # Higher values = faster speech
+    VOICE_RATES: dict[str, int] = {
+        "danger":    200,  # Fastest - urgent situations
+        "warning":   160,  # Medium - caution needed
+        "crosswalk": 140,  # Slower - informational
+    }
+
     def __init__(
         self,
         enabled: bool = True,
@@ -45,7 +53,7 @@ class AlertManager:
         cooldowns: dict[str, float] | None = None,
     ) -> None:
         self.enabled = enabled
-        self.voice_rate = voice_rate
+        self.voice_rate = voice_rate  # Default/base rate
         self._cooldowns = {**self.DEFAULT_COOLDOWNS, **(cooldowns or {})}
         self._last: dict[str, float] = {}
         self._lock = threading.Lock()
@@ -70,7 +78,7 @@ class AlertManager:
                 return False
             self._last[key] = now
 
-        threading.Thread(target=self._speak, args=(message,), daemon=True).start()
+        threading.Thread(target=self._speak, args=(message, level), daemon=True).start()
         return True
 
     def reset(self, key: str | None = None) -> None:
@@ -83,21 +91,65 @@ class AlertManager:
 
     # ── private ──────────────────────────────────────────────────────────────
 
-    def _speak(self, message: str) -> None:
+    def _speak(self, message: str, level: str = "warning") -> None:
         try:
+            # Modify message based on urgency level
+            if level == "danger":
+                # Add urgency indicators for danger alerts
+                message = f"URGENT! {message.upper()}! STOP NOW!"
+            elif level == "warning":
+                message = f"Warning: {message}"
+            # crosswalk level uses original message
+
             piper = subprocess.Popen(
                 [_PIPER_BIN, "--model", _VOICE_MODEL, "--output_raw"],
                 stdin=subprocess.PIPE,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.DEVNULL,
             )
-            # aplay plays the raw PCM audio
-            aplay = subprocess.Popen(
-                ["aplay", "-r", _SAMPLE_RATE, "-f", "S16_LE", "-t", "raw", "-"],
-                stdin=piper.stdout,
-                stdout=subprocess.DEVNULL,
-                stderr=subprocess.DEVNULL,
-            )
+
+            # Use different playback speeds based on urgency
+            # Higher speed = more urgent (faster playback)
+            speed_multiplier = {
+                "danger": 1.3,    # 30% faster for danger
+                "warning": 1.1,   # 10% faster for warning
+                "crosswalk": 1.0  # Normal speed for crosswalk
+            }.get(level, 1.0)
+
+            if speed_multiplier != 1.0:
+                # Use sox to speed up audio if available
+                try:
+                    sox = subprocess.Popen(
+                        ["sox", "-r", _SAMPLE_RATE, "-c", "1", "-b", "16", "-e", "signed-integer", "-t", "raw", "-",
+                         "-r", str(int(int(_SAMPLE_RATE) * speed_multiplier)), "-c", "1", "-b", "16", "-e", "signed-integer", "-t", "raw", "-",
+                         "speed", str(speed_multiplier)],
+                        stdin=piper.stdout,
+                        stdout=subprocess.PIPE,
+                        stderr=subprocess.DEVNULL,
+                    )
+                    aplay = subprocess.Popen(
+                        ["aplay", "-r", str(int(int(_SAMPLE_RATE) * speed_multiplier)), "-f", "S16_LE", "-t", "raw", "-"],
+                        stdin=sox.stdout,
+                        stdout=subprocess.DEVNULL,
+                        stderr=subprocess.DEVNULL,
+                    )
+                    sox.stdout.close()
+                except FileNotFoundError:
+                    # sox not available, fall back to normal playback
+                    aplay = subprocess.Popen(
+                        ["aplay", "-r", _SAMPLE_RATE, "-f", "S16_LE", "-t", "raw", "-"],
+                        stdin=piper.stdout,
+                        stdout=subprocess.DEVNULL,
+                        stderr=subprocess.DEVNULL,
+                    )
+            else:
+                # Normal speed playback
+                aplay = subprocess.Popen(
+                    ["aplay", "-r", _SAMPLE_RATE, "-f", "S16_LE", "-t", "raw", "-"],
+                    stdin=piper.stdout,
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL,
+                )
             piper.stdin.write(message.encode())
             piper.stdin.close()
     

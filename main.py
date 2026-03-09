@@ -11,8 +11,8 @@ Keyboard shortcuts (active anywhere in the window):
 
 import sys
 
-from PyQt5.QtCore import Qt
-from PyQt5.QtGui import QColor, QPalette, QPixmap, QPainter, QFont, QPen
+from PyQt5.QtCore import Qt, QThread
+from PyQt5.QtGui import QColor, QPalette, QPixmap, QPainter, QFont, QPen, QLinearGradient, QPainterPath
 from PyQt5.QtWidgets import QApplication, QSplashScreen
 
 from core.config import load_config
@@ -36,27 +36,80 @@ def _apply_dark_palette(app: QApplication) -> None:
     p.setColor(QPalette.HighlightedText, QColor(255, 255, 255))
     app.setPalette(p)
 
-# SPlash screen
+# Splash screen
 
-def _make_splash(w: int = 520, h: int = 300) -> QPixmap:
+def _make_splash(w: int = 900, h: int = 560) -> QPixmap:
     pix = QPixmap(w, h)
-    pix.fill(QColor("#111111"))
+    pix.fill(QColor("#0a0a0a"))
 
     p = QPainter(pix)
     p.setRenderHint(QPainter.Antialiasing)
 
-    p.fillRect(0, 0, w, 6, QColor("#3c64b4"))
+    # Background gradient
+    gradient = QLinearGradient(0, 0, 0, h)
+    gradient.setColorAt(0, QColor("#1a1a2e"))
+    gradient.setColorAt(0.5, QColor("#16213e"))
+    gradient.setColorAt(1, QColor("#0f0f23"))
+    p.fillRect(0, 0, w, h, gradient)
 
-    title_font = QFont("Sans Serif", 42, QFont.Bold)
+    # Top accent bar with gradient
+    accent_gradient = QLinearGradient(0, 0, w, 0)
+    accent_gradient.setColorAt(0, QColor("#ff6b6b"))
+    accent_gradient.setColorAt(0.5, QColor("#4ecdc4"))
+    accent_gradient.setColorAt(1, QColor("#45b7d1"))
+    p.fillRect(0, 0, w, 8, accent_gradient)
+
+    # Simple icon (car silhouette) - scaled for larger size
+    p.setPen(QPen(QColor("#4ecdc4"), 3))
+    p.setBrush(QColor("#4ecdc4").lighter(120))
+
+    # Car body - scaled up
+    car_path = QPainterPath()
+    car_path.moveTo(w//2 - 80, h//2 - 30)
+    car_path.lineTo(w//2 - 50, h//2 - 60)
+    car_path.lineTo(w//2 + 50, h//2 - 60)
+    car_path.lineTo(w//2 + 80, h//2 - 30)
+    car_path.lineTo(w//2 + 65, h//2 + 15)
+    car_path.lineTo(w//2 - 65, h//2 + 15)
+    car_path.closeSubpath()
+    p.drawPath(car_path)
+
+    # Wheels - scaled up
+    p.setBrush(QColor("#2c3e50"))
+    p.drawEllipse(w//2 - 60, h//2 + 8, 22, 22)
+    p.drawEllipse(w//2 + 38, h//2 + 8, 22, 22)
+
+    # Title - larger font for bigger screen
+    title_font = QFont("Arial", 64, QFont.Bold)
     p.setFont(title_font)
     p.setPen(QColor("#ffffff"))
-    p.drawText(0, 60, w, 70, Qt.AlignHCenter | Qt.AlignVCenter, "DriveSafe")
 
-    sub_font = QFont("Sans Serif", 13)
+    # Add text shadow
+    p.setPen(QColor("#000000"))
+    p.drawText(3, 83, w, 90, Qt.AlignHCenter | Qt.AlignVCenter, "DriveSafe")
+    p.setPen(QColor("#ffffff"))
+    p.drawText(0, 80, w, 90, Qt.AlignHCenter | Qt.AlignVCenter, "DriveSafe")
+
+    # Subtitle - larger font
+    sub_font = QFont("Arial", 20)
     p.setFont(sub_font)
+    p.setPen(QColor("#b8c5d6"))
+    p.drawText(0, 180, w, 40, Qt.AlignHCenter | Qt.AlignVCenter,
+               "AI-Powered Pedestrian Safety Assistant")
+
+    # Version info - larger font
+    version_font = QFont("Arial", 14)
+    p.setFont(version_font)
     p.setPen(QColor("#888888"))
-    p.drawText(0, 130, w, 40, Qt.AlignHCenter | Qt.AlignVCenter,
-               "Pedestrian Safety Assistant")
+    p.drawText(0, h - 80, w, 30, Qt.AlignHCenter | Qt.AlignVCenter,
+               "Real-time Detection • Distance Estimation • Voice Alerts")
+
+    # Loading text - larger font
+    loading_font = QFont("Arial", 16, QFont.Bold)
+    p.setFont(loading_font)
+    p.setPen(QColor("#4ecdc4"))
+    p.drawText(0, h - 40, w, 25, Qt.AlignHCenter | Qt.AlignVCenter,
+               "Initializing...")
 
     p.end()
     return pix
@@ -74,6 +127,22 @@ def main() -> None:
     splash = QSplashScreen(_make_splash(), Qt.WindowStaysOnTopHint)
     splash.show()
     app.processEvents()
+
+    # Show loading messages
+    loading_messages = [
+        "Loading configuration...",
+        "Initializing AI model...",
+        "Setting up camera...",
+        "Starting DriveSafe..."
+    ]
+
+    for i, message in enumerate(loading_messages):
+        splash.showMessage(message, Qt.AlignBottom | Qt.AlignHCenter, QColor("#4ecdc4"))
+        app.processEvents()
+        QThread.msleep(800)  # Longer delay for visibility
+
+    # Brief pause before showing main window
+    QThread.msleep(500)
 
     window = MainWindow(cfg)
     window._thread.ready.connect(lambda: splash.finish(window))
